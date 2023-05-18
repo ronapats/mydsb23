@@ -22,6 +22,8 @@ library(wbstats)
 library(skimr)
 library(countrycode)
 library(here)
+library(ggplot2)
+library(dplyr)
 ```
 
 # Data Visualisation - Exploration
@@ -33,6 +35,10 @@ Now that you've demonstrated your software is setup, and you have the basics of 
 In July 2012, in the aftermath of a mass shooting in a movie theater in Aurora, Colorado, [Mother Jones](https://www.motherjones.com/politics/2012/07/mass-shootings-map/) published a report on mass shootings in the United States since 1982. Importantly, they provided the underlying data set as [an open-source database](https://www.motherjones.com/politics/2012/12/mass-shootings-mother-jones-full-data/) for anyone interested in studying and understanding this criminal behavior.
 
 ## Obtain the data
+
+mass_shootings \<- read_csv(here::here("data", "mass_shootings.csv"))
+
+glimpse(mass_shootings)
 
 ```{r}
 #| echo: false
@@ -46,7 +52,7 @@ glimpse(mass_shootings)
 ```
 
 | column(variable)     | description                                                                 |
-|----------------------|-----------------------------------------------------------------------------|
+|------------------|------------------------------------------------------|
 | case                 | short name of incident                                                      |
 | year, month, day     | year, month, day in which the shooting occurred                             |
 | location             | city and state where the shooting occcurred                                 |
@@ -67,25 +73,49 @@ glimpse(mass_shootings)
 -   Generate a data frame that summarizes the number of mass shootings per year.
 
 ```{r}
-
+mass_shootings_year <- mass_shootings %>% 
+  group_by(year) %>% 
+  summarise(count = n())
 ```
 
 -   Generate a bar chart that identifies the number of mass shooters associated with each race category. The bars should be sorted from highest to lowest and each bar should show its number.
 
 ```{r}
+mass_shooters_race <- mass_shootings %>%
+  group_by(race) %>%
+  summarise(Count = n()) %>%
+  arrange(desc(Count))
 
+ggplot(mass_shooters_race, aes(x = reorder(race, -Count), y = Count)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = Count), vjust = -0.5, color = "black", size = 4) +
+  labs(x = "Race", y = "Number of Mass Shooters") +
+  ggtitle("Number of Mass Shooters by Race") +
+  theme_bw()
 ```
 
 -   Generate a boxplot visualizing the number of total victims, by type of location.
 
 ```{r}
-
+ggplot(mass_shootings, aes(x = location_type, y = total_victims)) +
+  geom_boxplot() +
+  labs(x = "Location Type", y = "Number of Total Victims") +
+  ggtitle("Number of Total Victims by Location Type") +
+  theme_bw()
 ```
 
 -   Redraw the same plot, but remove the Las Vegas Strip massacre from the dataset.
 
 ```{r}
+# Filter out the Las Vegas Strip massacre
+mass_shootings_filtered <- mass_shootings %>%
+  filter(case != "Las Vegas Strip massacre")
 
+ggplot(mass_shootings_filtered, aes(x = location_type, y = total_victims)) +
+  geom_boxplot() +
+  labs(x = "Location Type", y = "Number of Total Victims") +
+  ggtitle("Number of Total Victims by Location Type") +
+  theme_bw()
 ```
 
 ### More open-ended questions
@@ -95,19 +125,54 @@ Address the following questions. Generate appropriate figures/tables to support 
 -   How many white males with prior signs of mental illness initiated a mass shooting after 2000?
 
 ```{r}
+white_males_mental_illness <- mass_shootings %>%
+  filter(race == "White", male == TRUE, prior_mental_illness == "Yes", year > 2000) %>%
+  summarize(count = n())
+
+#Ans: 22
 
 ```
 
 -   Which month of the year has the most mass shootings? Generate a bar chart sorted in chronological (natural) order (Jan-Feb-Mar- etc) to provide evidence of your answer.
 
 ```{r}
+mass_shootings_month <-mass_shootings %>% 
+  group_by(month) %>% 
+  summarize(count = n()) %>%
+  arrange(desc(count))
+#Ans: Feb has the moss mass shootings.
+
+# Convert "month" to factor with desired order
+month_order <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+                 "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+mass_shootings_month$month <- factor(mass_shootings_month$month, levels = month_order)
+
+# Create bar chart with sorted x-axis labels
+ggplot(mass_shootings_month, aes(x = month, y = count)) +
+  geom_bar(stat = "identity", fill = "steelblue") +  
+  geom_text(aes(label = count), vjust = -0.5, color = "black", size = 4) +
+  labs(x = "Month", y = "Number of Mass Shootings") +
+  ggtitle("Number of Mass Shootings by Month") +
+  theme_bw()
 
 ```
 
 -   How does the distribution of mass shooting fatalities differ between White and Black shooters? What about White and Latino shooters?
 
 ```{r}
+white_black <- mass_shootings %>% filter(race %in% c("White", "Black"))
+ggplot(white_black, aes(x = race, y = fatalities)) +
+  geom_boxplot(fill = "steelblue", color = "black") +
+  labs(x = "Race", y = "Number of Fatalities") +
+  ggtitle("Distribution of Mass Shooting Fatalities\n(White vs. Black Shooters)") +
+  theme_bw()
 
+white_latino <- mass_shootings %>% filter(race %in% c("White", "Latino"))
+ggplot(white_latino, aes(x = race, y = fatalities)) +
+  geom_boxplot(fill = "steelblue", color = "black") +
+  labs(x = "Race", y = "Number of Fatalities") +
+  ggtitle("Distribution of Mass Shooting Fatalities\n(White vs. Latino Shooters)") +
+  theme_bw()
 ```
 
 ### Very open-ended
@@ -115,7 +180,15 @@ Address the following questions. Generate appropriate figures/tables to support 
 -   Are mass shootings with shooters suffering from mental illness different from mass shootings with no signs of mental illness in the shooter?
 
 ```{r}
+mental_illness <- mass_shootings %>% 
+  filter(prior_mental_illness == "Yes") %>% 
+  summarize(count = n())
+#Mass shootings with shooters suffering from mental illness different = 62
 
+no_mental_illness <- mass_shootings %>% 
+  filter(is.na(prior_mental_illness)) %>%
+  summarize(count = n())
+#Mass shootings with no signs of mental illness = 46
 ```
 
 -   Assess the relationship between mental illness and total victims, mental illness and location type, and the intersection of all three variables.
@@ -329,9 +402,9 @@ There is a lot of explanatory text, comments, etc. You do not need these, so del
 
 # Details
 
--   Who did you collaborate with: TYPE NAMES HERE
+-   Who did you collaborate with: ChatGPT and friends
 -   Approximately how much time did you spend on this problem set: ANSWER HERE
--   What, if anything, gave you the most trouble: ANSWER HERE
+-   What, if anything, gave you the most trouble: -
 
 **Please seek out help when you need it,** and remember the [15-minute rule](https://mam2022.netlify.app/syllabus/#the-15-minute-rule){target="\_blank"}. You know enough R (and have enough examples of code from class and your readings) to be able to do this. If you get stuck, ask for help from others, post a question on Slack-- and remember that I am here to help too!
 

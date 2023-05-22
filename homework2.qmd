@@ -24,6 +24,7 @@ library(countrycode)
 library(here)
 library(ggplot2)
 library(dplyr)
+library(lubridate)
 ```
 
 # Data Visualisation - Exploration
@@ -126,10 +127,10 @@ Address the following questions. Generate appropriate figures/tables to support 
 
 ```{r}
 white_males_mental_illness <- mass_shootings %>%
-  filter(race == "White", male == TRUE, prior_mental_illness == "Yes", year > 2000) %>%
+  filter(race == "White", male == TRUE, prior_mental_illness == "Yes", year >= 2000) %>%
   summarize(count = n())
 
-#Ans: 22
+#Ans: 23 (Including Year 2000)
 
 ```
 
@@ -189,11 +190,29 @@ no_mental_illness <- mass_shootings %>%
   filter(is.na(prior_mental_illness)) %>%
   summarize(count = n())
 #Mass shootings with no signs of mental illness = 46
+
+#Ans: Yes, based on the provided data, there is a difference between mass shootings involving shooters with mental illness and those with no signs of mental illness. The analysis indicates that there were 62 mass shootings involving shooters suffering from mental illness and 46 mass shootings with no signs of mental illness. This suggests that the presence or absence of mental illness may play a role in mass shootings, although further examination would be necessary to understand the specific nature of this difference.
 ```
 
 -   Assess the relationship between mental illness and total victims, mental illness and location type, and the intersection of all three variables.
 
 ```{r}
+
+# Relationship between mental illness and total victims
+mental_victims <- mass_shootings %>%
+  group_by(prior_mental_illness) %>%
+  summarize(total_victims = sum(total_victims), .groups = "drop")
+
+# Relationship between mental illness and location type
+mental_location <- mass_shootings %>%
+  group_by(prior_mental_illness, location_type) %>%
+  summarize(count = n(), .groups = "drop")
+
+# Relationship between mental illness, total victims, and location type
+mental_victims_location <- mass_shootings %>%
+  group_by(prior_mental_illness, location_type) %>%
+  summarize(total_victims = sum(total_victims), .groups = "drop")
+
 
 ```
 
@@ -243,25 +262,91 @@ The data dictionary is as follows
 -   In this dataset, how likely are fraudulent transactions? Generate a table that summarizes the number and frequency of fraudulent transactions per year.
 
 ```{r}
+fraud_summary <- card_fraud %>%
+  group_by(trans_year) %>%
+  summarize(num_fraudulent_transactions = sum(is_fraud == 1),
+            frequency = num_fraudulent_transactions*100 / n(),
+            .groups = "drop")
 
+fraud_summary
 ```
 
 -   How much money (in US$ terms) are fraudulent transactions costing the company? Generate a table that summarizes the total amount of legitimate and fraudulent transactions per year and calculate the % of fraudulent transactions, in US$ terms.
 
 ```{r}
-
+fraud_transactions_cost <- card_fraud %>%
+  group_by(trans_year) %>%
+  summarize(total_legitimate_amount = sum(amt[is_fraud == 0]),
+            total_fraudulent_amount = sum(amt[is_fraud == 1]),
+            percentage_fraudulent = (total_fraudulent_amount / (total_legitimate_amount + total_fraudulent_amount)) * 100,
+            .groups = "drop")
 ```
 
 -   Generate a histogram that shows the distribution of amounts charged to credit card, both for legitimate and fraudulent accounts. Also, for both types of transactions, calculate some quick summary statistics.
 
 ```{r}
 
+
+# Convert is_fraud variable to a factor
+card_fraud$is_fraud <- factor(card_fraud$is_fraud, levels = c(0, 1))
+
+# Histogram for legitimate transactions (Filter only those amount less than 500)
+hist_legitimate <- ggplot(card_fraud, aes(x = amt)) +
+  geom_histogram(data = filter(card_fraud, is_fraud == 0 & amt < 500), 
+                 color = "white", bins = 20, alpha = 0.7) +
+  labs(title = "Distribution of Amounts Charged (Legitimate Transactions)",
+       x = "Amount", y = "Frequency") +
+  theme_minimal()
+
+# Histogram for fraudulent transactions
+hist_fraudulent <- ggplot(card_fraud, aes(x = amt)) +
+  geom_histogram(data = filter(card_fraud, is_fraud == 1), 
+                 color = "white", bins = 20, alpha = 0.7) +
+  labs(title = "Distribution of Amounts Charged (Fraudulent Transactions)",
+       x = "Amount", y = "Frequency") +
+  theme_minimal()
+
+# Summary statistics for legitimate transactions
+legitimate_stats <- card_fraud %>%
+  filter(is_fraud == 0) %>%
+  summarize(mean_amount = mean(amt),
+            median_amount = median(amt),
+            min_amount = min(amt),
+            max_amount = max(amt))
+
+# Summary statistics for fraudulent transactions
+fraudulent_stats <- card_fraud %>%
+  filter(is_fraud == 1) %>%
+  summarize(mean_amount = mean(amt),
+            median_amount = median(amt),
+            min_amount = min(amt),
+            max_amount = max(amt))
+
+hist_legitimate
+hist_fraudulent
+legitimate_stats
+fraudulent_stats
 ```
 
 -   What types of purchases are most likely to be instances of fraud? Consider category of merchants and produce a bar chart that shows % of total fraudulent transactions sorted in order.
 
 ```{r}
+# Calculate percentage of fraudulent transactions by merchant category
+fraud_category <- card_fraud %>%
+  filter(is_fraud == 1) %>%
+  group_by(category) %>%
+  summarize(fraud_percentage = n() / nrow(card_fraud) * 100) %>%
+  arrange(desc(fraud_percentage))
 
+# Create bar chart showing the percentage of total fraudulent transactions by category
+bar_chart <- ggplot(fraud_category, aes(x = reorder(category, -fraud_percentage), y = fraud_percentage)) +
+  geom_bar(stat = "identity", fill = "blue", alpha = 0.7) +
+  labs(title = "Percentage of Total Fraudulent Transactions by Merchant Category",
+       x = "Merchant Category", y = "Percentage") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+bar_chart
+#ANS: The types of purchases that are most likely to be instances of fraud are Grocery_Pos and Shopping_Net
 ```
 
 -   When is fraud more prevalent? Which days, months, hours? To create new variables to help you in your analysis, we use the `lubridate` package and the following code
@@ -284,6 +369,47 @@ The data dictionary is as follows
         )
 
 ```{r}
+library(lubridate)
+card_fraud <- card_fraud %>% 
+  mutate(
+  date_only = lubridate::date(trans_date_trans_time),
+  month_name = lubridate::month(trans_date_trans_time, label=TRUE),
+  hour = lubridate::hour(trans_date_trans_time),
+  weekday = lubridate::wday(trans_date_trans_time, label = TRUE)
+  )
+
+#When is fraud more prevalent?
+#by date
+card_fraud %>% 
+  filter(is_fraud == 1) %>% 
+  group_by(date_only) %>%
+  select(date_only, amt) %>% 
+  arrange(desc(amt))
+#2019-01-18 has the most fraud
+
+#by months
+card_fraud %>% 
+  filter(is_fraud == 1) %>%
+  group_by(month_name) %>% 
+  summarise(count = n()) %>% 
+  arrange(desc(count))
+#Mar and May have the most fraud
+
+#by hours
+card_fraud %>% 
+  filter(is_fraud == 1) %>%
+  group_by(hour) %>% 
+  summarise(count = n()) %>% 
+  arrange(desc(count))
+#Fraud is likely to happen at hour 23
+
+#by day
+card_fraud %>% 
+  filter(is_fraud == 1) %>%
+  group_by(weekday) %>% 
+  summarise(count = n()) %>% 
+  arrange(desc(count))
+#Monday has the most fraud
 
 ```
 
@@ -391,7 +517,7 @@ Specific questions:
 2.  You may need to join these data frames
     -   Use `left_join` from `dplyr` to [join the tables](http://r4ds.had.co.nz/relational-data.html)
     -   To complete the merge, you need a unique *key* to match observations between the data frames. Country names may not be consistent among the three dataframes, so please use the 3-digit ISO code for each country
-    -   An aside: There is a great package called [`countrycode`](https://github.com/vincentarelbundock/countrycode) that helps solve the problem of inconsistent country names (Is it UK? United Kingdon? Great Britain?). `countrycode()` takes as an input a country's name in a specific format and outputs it using whatever format you specify.
+    -   An aside: There is a great package called `countrycode` that helps solve the problem of inconsistent country names (Is it UK? United Kingdon? Great Britain?). `countrycode()` takes as an input a country's name in a specific format and outputs it using whatever format you specify.
 3.  Write a function that takes as input any country's name and returns all three graphs. You can use the `patchwork` package to arrange the three graphs as shown below
 
 ![](images/electricity-co2-gdp.png)
@@ -403,7 +529,7 @@ There is a lot of explanatory text, comments, etc. You do not need these, so del
 # Details
 
 -   Who did you collaborate with: ChatGPT and friends
--   Approximately how much time did you spend on this problem set: ANSWER HERE
+-   Approximately how much time did you spend on this problem set: 3-4 hours
 -   What, if anything, gave you the most trouble: -
 
 **Please seek out help when you need it,** and remember the [15-minute rule](https://mam2022.netlify.app/syllabus/#the-15-minute-rule){target="\_blank"}. You know enough R (and have enough examples of code from class and your readings) to be able to do this. If you get stuck, ask for help from others, post a question on Slack-- and remember that I am here to help too!
